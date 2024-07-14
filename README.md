@@ -7,9 +7,8 @@
 3. **Declarative Syntax**: Terraform uses a declarative syntax, allowing you to specify the desired end-state of your infrastructure. This makes it easier to understand and maintain your code compared to imperative scripting languages.
 4. **State Management**: Terraform maintains a state file that tracks the current state of your infrastructure. This state file helps Terraform understand the differences between the desired and actual states of your infrastructure, enabling it to make informed decisions when you apply changes.
 5. **Plan and Apply**: Terraform's "plan" and "apply" workflow allows you to preview changes before applying them. This helps prevent unexpected modifications to your infrastructure and provides an opportunity to review and approve changes before they are implemented.
-6. **Community Support**: Terraform has a large and active user community, which means you can find answers to common questions, troubleshooting tips, and a wealth of documentation and tutorials online.
-7. **Integration with Other Tools**: Terraform can be integrated with other DevOps and automation tools, such as Docker, Kubernetes, Ansible, and Jenkins, allowing you to create comprehensive automation pipelines.
-8. **HCL Language**: Terraform uses HashiCorp Configuration Language (HCL), which is designed specifically for defining infrastructure. It's human-readable and expressive, making it easier for both developers and operators to work with.
+6. **Integration with Other Tools**: Terraform can be integrated with other DevOps and automation tools, such as Docker, Kubernetes, Ansible, and Jenkins, allowing you to create comprehensive automation pipelines.
+7. **HCL Language**: Terraform uses HashiCorp Configuration Language (HCL), which is designed specifically for defining infrastructure. It's human-readable and expressive, making it easier for both developers and operators to work with.
 
 ## Components in Terraform
 
@@ -84,5 +83,175 @@ terraform init —> terraform plan —> terraform apply —> terraform destroy
 
 ## Setup Terraform
 
-1. **Configure AWS**: Install AWS CLI and use command `aws configure` to configure AWS CLI on your host.
-2. Clone this reporsitory to apply IaC for AWS and create AWS Instances, s3 bucket for remote backend (where terraform.tfstate file gets stored for security purpose), DynamoDB to put the state-lock.
+1. Zeroday Tasks include:
+    a. **Configure AWS**: Install AWS CLI and use command `aws configure` to configure AWS CLI on your host. Get required credentials from AWS console.
+    b. Clone this reporsitory to apply IaC for AWS and create AWS Instances, s3 bucket for remote backend (where terraform.tfstate file gets stored for security purpose), DynamoDB to put the state-lock remotely.
+   
+2. Flask App using EC2 with VPC:
+    a. Used the concept of provisioners like
+       'file' Provisioner: The file provisioner is used to copy files or directories from the local machine to a remote machine. This is useful for deploying configuration files, scripts, or other assets to a provisioned instance.
+        ```
+           provisioner "file" {
+                  source      = "local/path/to/localfile.txt"
+                  destination = "/path/on/remote/instance/file.txt"
+                  connection {
+                    type     = "ssh"
+                    user     = "ec2-user"
+                    private_key = file("~/.ssh/id_rsa")
+                  }
+                }
+        ```
+    b. 'remote-exec' Provisioner: The remote-exec provisioner is used to run scripts or commands on a remote machine over SSH or WinRM connections. It's often used to configure or install software on provisioned instances.
+       ```
+       provisioner "remote-exec" {
+          inline = [
+            "sudo yum update -y",
+            "sudo yum install -y httpd",
+            "sudo systemctl start httpd",
+          ]
+          connection {
+            type        = "ssh"
+            user        = "ec2-user"
+            private_key = file("~/.ssh/id_rsa")
+            host        = aws_instance.example.public_ip
+          }
+        }
+       ```
+    c. 'local-exec' Provisioner: The local-exec provisioner is used to run scripts or commands locally on the machine where Terraform is executed. It is useful for tasks that don't require remote execution, such as initializing a local database or configuring local resources.
+       ```
+         provisioner "local-exec" {
+            command = "echo 'This is a local command'"
+          }
+        }
+       ```
+
+## Vault Integration
+
+To install Vault on the EC2 instance, you can use the following steps:
+
+**Install gpg**
+
+```
+sudo apt update && sudo apt install gpg
+```
+
+**Download the signing key to a new keyring**
+
+```
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+```
+
+**Verify the key's fingerprint**
+
+```
+gpg --no-default-keyring --keyring /usr/share/keyrings/hashicorp-archive-keyring.gpg --fingerprint
+```
+
+**Add the HashiCorp repo**
+
+```
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+```
+
+```
+sudo apt update
+```
+
+**Finally, Install Vault**
+
+```
+sudo apt install vault
+```
+
+## Start Vault.
+
+To start Vault, you can use the following command:
+
+```
+vault server -dev -dev-listen-address="0.0.0.0:8200"
+```
+
+## Configure Terraform to read the secret from Vault.
+
+Detailed steps to enable and configure AppRole authentication in HashiCorp Vault:
+
+1. **Enable AppRole Authentication**:
+
+To enable the AppRole authentication method in Vault, you need to use the Vault CLI or the Vault HTTP API.
+
+**Using Vault CLI**:
+
+Run the following command to enable the AppRole authentication method:
+
+```bash
+vault auth enable approle
+```
+
+This command tells Vault to enable the AppRole authentication method.
+
+2. **Create an AppRole**:
+
+We need to create policy first,
+
+```
+vault policy write terraform - <<EOF
+path "*" {
+  capabilities = ["list", "read"]
+}
+
+path "secrets/data/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "kv/data/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+
+path "secret/data/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "auth/token/create" {
+capabilities = ["create", "read", "update", "list"]
+}
+EOF
+```
+
+Now you'll need to create an AppRole with appropriate policies and configure its authentication settings. Here are the steps to create an AppRole:
+
+**a. Create the AppRole**:
+
+```bash
+vault write auth/approle/role/terraform \
+    secret_id_ttl=10m \
+    token_num_uses=10 \
+    token_ttl=20m \
+    token_max_ttl=30m \
+    secret_id_num_uses=40 \
+    token_policies=terraform
+```
+
+3. **Generate Role ID and Secret ID**:
+
+After creating the AppRole, you need to generate a Role ID and Secret ID pair. The Role ID is a static identifier, while the Secret ID is a dynamic credential.
+
+**a. Generate Role ID**:
+
+You can retrieve the Role ID using the Vault CLI:
+
+```bash
+vault read auth/approle/role/my-approle/role-id
+```
+
+Save the Role ID for use in your Terraform configuration.
+
+**b. Generate Secret ID**:
+
+To generate a Secret ID, you can use the following command:
+
+```bash
+vault write -f auth/approle/role/my-approle/secret-id
+   ```
+
+This command generates a Secret ID and provides it in the response. Save the Secret ID securely, as it will be used for Terraform authentication.
