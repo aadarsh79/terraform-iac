@@ -14,7 +14,7 @@
 
 1. **Provider**: A provider is a plugin for Terraform that defines and manages resources for a specific cloud or infrastructure platform. Examples of providers include AWS, Azure, Google Cloud, and many others. You configure providers in your Terraform code to interact with the desired infrastructure platform.
     
-    ```
+    ```hcl
     provider "aws" {
       region = "us-east-1"
     }
@@ -22,7 +22,7 @@
     
     **required_providers block:**
     
-    ```
+    ```hcl
     terraform {
       required_providers {
         aws = {
@@ -35,7 +35,7 @@
     
 2. **Resource**: A resource is a specific infrastructure component that you want to create and manage using Terraform. Resources can include virtual machines, databases, storage buckets, network components, and more. Each resource has a type and configuration parameters that you define in your Terraform code.
     
-    ```
+    ```hcl
     resource "aws_instance" "example" {
       ami = "ami-0123456789abcdef0" # Change the AMI instance_type = "t2.micro"
     }
@@ -54,7 +54,7 @@
 3. **Module**: A module is a reusable and encapsulated unit of Terraform code. Modules allow you to package infrastructure configurations, making it easier to maintain, share, and reuse them across different parts of your infrastructure. Modules can be your own creations or come from the Terraform Registry, which hosts community-contributed modules.
     
     
-    ```
+    ```hcl
     module "ec2_instance" {
       source = "./modules/ec2_instance"
     }
@@ -86,11 +86,45 @@ terraform init —> terraform plan —> terraform apply —> terraform destroy
 1. Zeroday Tasks include:
     a. **Configure AWS**: Install AWS CLI and use command `aws configure` to configure AWS CLI on your host. Get required credentials from AWS console.
     b. Clone this reporsitory to apply IaC for AWS and create AWS Instances, s3 bucket for remote backend (where terraform.tfstate file gets stored for security purpose), DynamoDB to put the state-lock remotely.
-   
+
+    **Overcoming Disadvantages with Remote Backends (e.g., S3):**
+A remote backend stores the Terraform state file outside of your local file system and version control. Using S3 as a remote backend is a popular choice due to its reliability and scalability. Here's how to set it up:
+    
+    1. **Create an S3 Bucket**: Create an S3 bucket in your AWS account to store the Terraform state. Ensure that the appropriate IAM permissions are set up.
+    
+    2. **Configure Remote Backend in Terraform:**
+    
+       ```hcl
+       # In your Terraform configuration file (e.g., main.tf), define the remote backend.
+       terraform {
+         backend "s3" {
+           bucket         = "your-bucket-name"
+           key            = "terraform/terraform.tfstate"
+           region         = "ap-south-1"
+           encrypt        = true
+           dynamodb_table = "your-dynamodb-table"
+         }
+       }
+       ```
+
+    **DynamoDB Table for State Locking:**
+       To enable state locking, create a DynamoDB table and provide its name in the `dynamodb_table` field. This prevents concurrent access issues when multiple users or processes run Terraform.
+    
+    **State Locking with DynamoDB:**
+    
+    DynamoDB is used for state locking when a remote backend is configured. It ensures that only one user or process can modify the Terraform state at a time. Here's how to create a DynamoDB table and configure it for state locking:
+    
+    **Create a DynamoDB Table:**
+       You can create a DynamoDB table using the AWS Management Console or AWS CLI. Here's an AWS CLI example:
+    
+       ```sh
+       aws dynamodb create-table --table-name your-dynamodb-table --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
+       ```
+
 2. Flask App using EC2 with VPC:
     a. Used the concept of provisioners like
        'file' Provisioner: The file provisioner is used to copy files or directories from the local machine to a remote machine. This is useful for deploying configuration files, scripts, or other assets to a provisioned instance.
-        ```
+        ```hcl
            provisioner "file" {
                   source      = "local/path/to/localfile.txt"
                   destination = "/path/on/remote/instance/file.txt"
@@ -102,7 +136,7 @@ terraform init —> terraform plan —> terraform apply —> terraform destroy
                 }
         ```
     b. 'remote-exec' Provisioner: The remote-exec provisioner is used to run scripts or commands on a remote machine over SSH or WinRM connections. It's often used to configure or install software on provisioned instances.
-       ```
+       ```hcl
        provisioner "remote-exec" {
           inline = [
             "sudo yum update -y",
@@ -118,7 +152,7 @@ terraform init —> terraform plan —> terraform apply —> terraform destroy
         }
        ```
     c. 'local-exec' Provisioner: The local-exec provisioner is used to run scripts or commands locally on the machine where Terraform is executed. It is useful for tasks that don't require remote execution, such as initializing a local database or configuring local resources.
-       ```
+       ```hcl
          provisioner "local-exec" {
             command = "echo 'This is a local command'"
           }
