@@ -81,11 +81,10 @@
 
 terraform init —> terraform plan —> terraform apply —> terraform destroy
 
-## Setup Terraform
+## Zeroday Tasks:
 
-1. Zeroday Tasks include:
-    a. **Configure AWS**: Install AWS CLI and use command `aws configure` to configure AWS CLI on your host. Get required credentials from AWS console.
-    b. Clone this reporsitory to apply IaC for AWS and create AWS Instances, s3 bucket for remote backend (where terraform.tfstate file gets stored for security purpose), DynamoDB to put the state-lock remotely.
+1. **Setup Terraform**: Configure AWS: Install AWS CLI and use command `aws configure` to configure AWS CLI on your host. Get required credentials from AWS console.
+2. Clone this repository to apply IaC for AWS and create AWS Instances, s3 bucket for remote backend (where terraform.tfstate file gets stored for security purpose), DynamoDB to put the state-lock remotely.
 
     **Overcoming Disadvantages with Remote Backends (e.g., S3):**
 A remote backend stores the Terraform state file outside of your local file system and version control. Using S3 as a remote backend is a popular choice due to its reliability and scalability. Here's how to set it up:
@@ -121,43 +120,44 @@ A remote backend stores the Terraform state file outside of your local file syst
        aws dynamodb create-table --table-name your-dynamodb-table --attribute-definitions AttributeName=LockID,AttributeType=S --key-schema AttributeName=LockID,KeyType=HASH --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
        ```
 
-2. Flask App using EC2 with VPC:
-    a. Used the concept of provisioners like
-       'file' Provisioner: The file provisioner is used to copy files or directories from the local machine to a remote machine. This is useful for deploying configuration files, scripts, or other assets to a provisioned instance.
-        ```hcl
-           provisioner "file" {
-                  source      = "local/path/to/localfile.txt"
-                  destination = "/path/on/remote/instance/file.txt"
-                  connection {
-                    type     = "ssh"
-                    user     = "ec2-user"
-                    private_key = file("~/.ssh/id_rsa")
-                  }
-                }
-        ```
-    b. 'remote-exec' Provisioner: The remote-exec provisioner is used to run scripts or commands on a remote machine over SSH or WinRM connections. It's often used to configure or install software on provisioned instances.
-       ```hcl
-       provisioner "remote-exec" {
-          inline = [
-            "sudo yum update -y",
-            "sudo yum install -y httpd",
-            "sudo systemctl start httpd",
-          ]
-          connection {
-            type        = "ssh"
-            user        = "ec2-user"
-            private_key = file("~/.ssh/id_rsa")
-            host        = aws_instance.example.public_ip
-          }
-        }
-       ```
-    c. 'local-exec' Provisioner: The local-exec provisioner is used to run scripts or commands locally on the machine where Terraform is executed. It is useful for tasks that don't require remote execution, such as initializing a local database or configuring local resources.
-       ```hcl
-         provisioner "local-exec" {
-            command = "echo 'This is a local command'"
-          }
-        }
-       ```
+## Flask App using EC2 with VPC:
+
+**Used the concept of provisioners like**
+1.  **'file' Provisioner**: The file provisioner is used to copy files or directories from the local machine to a remote machine. This is useful for deploying configuration files, scripts, or other assets to a provisioned instance.
+    ```hcl
+       provisioner "file" {
+              source      = "local/path/to/localfile.txt"
+              destination = "/path/on/remote/instance/file.txt"
+              connection {
+                type     = "ssh"
+                user     = "ec2-user"
+                private_key = file("~/.ssh/id_rsa")
+              }
+            }
+    ```
+2. **'remote-exec' Provisioner**: The remote-exec provisioner runs scripts or commands on a remote machine over SSH or WinRM connections. It's often used to configure or install software on provisioned instances.
+   ```hcl
+   provisioner "remote-exec" {
+      inline = [
+        "sudo yum update -y",
+        "sudo yum install -y httpd",
+        "sudo systemctl start httpd",
+      ]
+      connection {
+        type        = "ssh"
+        user        = "ec2-user"
+        private_key = file("~/.ssh/id_rsa")
+        host        = aws_instance.example.public_ip
+      }
+    }
+   ```
+3. **'local-exec' Provisioner**: The local-exec provisioner is used to run scripts or commands locally on the machine where Terraform is executed. It is useful for tasks that don't require remote execution, such as initializing a local database or configuring local resources.
+   ```hcl
+     provisioner "local-exec" {
+        command = "echo 'This is a local command'"
+      }
+    }
+   ```
 
 ## Vault Integration
 
@@ -289,3 +289,32 @@ vault write -f auth/approle/role/my-approle/secret-id
    ```
 
 This command generates a Secret ID and provides it in the response. Save the Secret ID securely, as it will be used for Terraform authentication.
+
+## Importing existing infra to Terraform
+
+It can be performed using following steps:
+1. **Using import block**: Create main.tf file and use import block to import already existing EC2 state to Terraform.
+   ```hcl
+   provider "aws" {
+      region = "ap-south-1"
+   }
+   
+   resource "aws_instance" "my_instance" {
+   }
+   
+   import {
+       id = "i-1234567890abcdef0"
+       to = "aws_instance.my_instance"
+   }
+   ```
+   Now, run this command to generate resources mentioned in main.tf in generated_ec2.tf by Terraform itself, so that this content can be copied to empty resource block of main.tf.
+   ```bash
+   terraform plan -generate-config-out=generated_ec2.tf
+   ```
+   But, the problem is when we do terraform plan, it is going to create already existing ec2 instance because the terraform does not know the state of this resource. For this, we need to create terraform.tfstate file using command
+   ```bash
+   terraform import aws_instance.my_instance i-1234567890abcdef0
+   ```
+   Now, if we do terraform plan, then it will not create new resource, it will say 'No changes'
+   
+   
