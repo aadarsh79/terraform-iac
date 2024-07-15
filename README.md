@@ -180,12 +180,23 @@ Terraform workspaces are a feature that allows you to manage multiple instances 
 
 4. **Use Variables to Differentiate Environments**: Terraform automatically manages separate state files for each workspace, ensuring that the state of your resources in one workspace doesn't interfere with those in another. This is particularly useful for maintaining different environments (dev, prod, etc.) within the same repository.
 Here's an example of how your directory structure might look:
- .
-  ├── main.tf
-  ├── variables.tf
-  ├── dev.tfvars
-  └── stage.tfvars
-  └── prod.tfvars
+```
+.
+├── flask-app
+│   ├── app.py
+│   └── templates
+│       └── index.html
+├── main.tf
+├── terraform.tfstate
+├── terraform.tfstate.backup
+└── terraform.tfstate.d
+    ├── dev
+    │   └──terraform.tfstate
+    ├── prod
+    │   └──terraform.tfstate  
+    └── stage
+        └──terraform.tfstate
+```
 
 When applying the configuration, specify the appropriate .tfvars file:
   ```bash
