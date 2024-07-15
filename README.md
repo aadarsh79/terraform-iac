@@ -159,6 +159,60 @@ A remote backend stores the Terraform state file outside of your local file syst
     }
    ```
 
+## Terraform Workspaces
+
+Terraform workspaces are a feature that allows you to manage multiple instances of a set of infrastructure within the same configuration. Each workspace has its own state data, which makes it possible to manage different environments (like development, staging, and production) from a single set of configuration files.
+
+1. **Initialize Your Terraform Configuration**
+  ```bash
+  terraform init
+  ```
+2. **Create Workspaces**: Create workspaces for your environments. For example, to create a development and a production workspace, you can use the following commands:
+  ```bash
+  terraform workspace new dev
+  terraform workspace new stage
+  terraform workspace new prod
+  ```
+3. **Switch Between Workspaces**: You can switch between workspaces using the terraform workspace select command. When you're in a specific workspace, any terraform apply, terraform plan, or terraform destroy commands you run will only affect the state and resources associated with that workspace.
+  ```bash
+  terraform workspace select dev
+  ```
+
+4. **Use Variables to Differentiate Environments**: Terraform automatically manages separate state files for each workspace, ensuring that the state of your resources in one workspace doesn't interfere with those in another. This is particularly useful for maintaining different environments (dev, prod, etc.) within the same repository.
+Here's an example of how your directory structure might look:
+ .
+  ├── main.tf
+  ├── variables.tf
+  ├── dev.tfvars
+  └── stage.tfvars
+  └── prod.tfvars
+
+When applying the configuration, specify the appropriate .tfvars file:
+  ```bash
+  terraform apply -var-file=dev.tfvars --auto-approve
+  terraform apply -var-file=prod.tfvars --auto-approve
+  ```
+
+Or, Modify main.tf to use different environment as per requirement.
+  ```hcl
+  variable "instance_type" {
+    description = "value"
+    type = map(string)
+
+    default = {
+      "dev" = "t2.micro"
+      "stage" = "t2.medium"
+      "prod" = "t2.xlarge"
+    }
+  }
+
+  module "ec2_instance" {
+    source = "./modules/ec2_instance"
+    ami = var.ami
+    instance_type = lookup(var.instance_type, terraform.workspace, "t2.micro")
+  }
+  ```
+
 ## Vault Integration
 
 To install Vault on the EC2 instance, you can use the following steps:
@@ -275,7 +329,7 @@ After creating the AppRole, you need to generate a Role ID and Secret ID pair. T
 You can retrieve the Role ID using the Vault CLI:
 
 ```bash
-vault read auth/approle/role/my-approle/role-id
+vault read auth/approle/role/terraform/role-id
 ```
 
 Save the Role ID for use in your Terraform configuration.
@@ -285,7 +339,7 @@ Save the Role ID for use in your Terraform configuration.
 To generate a Secret ID, you can use the following command:
 
 ```bash
-vault write -f auth/approle/role/my-approle/secret-id
+vault write -f auth/approle/role/terraform/secret-id
    ```
 
 This command generates a Secret ID and provides it in the response. Save the Secret ID securely, as it will be used for Terraform authentication.
