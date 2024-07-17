@@ -11,8 +11,26 @@ module "aws_ec2_instance" {
   key_name_value = "admin-ec2-key"
 }
 
-resource "aws_s3_bucket" "s3_bucket" {
-  bucket = "adarsh-mishra-s3"
+data "aws_caller_identity" "current" {}
+
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+}
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "${local.account_id}-tfstate"
+
+  versioning {
+    enabled = true
+  }
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
 }
 
 resource "aws_dynamodb_table" "terraform_lock" {
